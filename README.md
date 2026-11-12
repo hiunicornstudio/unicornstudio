@@ -82,7 +82,7 @@ Every component takes these, and they are the options object for `mountScene`.
 | `dpi`          | `number`  | scene setting | Pixel ratio.                                                                 |
 | `fps`          | `number`  | scene setting | Frames per second.                                                           |
 | `lazyLoad`     | `boolean` | `true`        | Waits to initialize until the scene scrolls into view.                       |
-| `production`   | `boolean` | `true`        | Serves scene data from the edge CDN.                                         |
+| `production`   | `boolean` | `false`       | Serves scene data from the edge CDN. Turn on for scenes published in production mode. |
 | `fixed`        | `boolean` | automatic     | Treats the scene as a fixed-position element.                                |
 | `altText`      | `string`  |               | Text inside the `<canvas>`, for SEO.                                         |
 | `ariaLabel`    | `string`  |               | `aria-label` of the `<canvas>`.                                              |
@@ -133,6 +133,7 @@ Change the import: `unicornstudio-react` becomes `unicornstudio/react`, and `uni
 - The SDK loads from jsDelivr instead of being bundled into your app. Pass `sdkUrl` to self-host it.
 - `scale`, `dpi` and `fps` default to the scene's published settings instead of `1`, `1.5` and `60`.
 - A failed scene calls `onError` and shows the placeholder. No error message is rendered into the page.
+- `production` defaults to `false`, as it does in the SDK. Pass `production` for scenes you publish in production mode.
 - `onLoad` receives the scene.
 
 ## License

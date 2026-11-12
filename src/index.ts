@@ -98,7 +98,7 @@ export function mountScene(element: HTMLElement, options: UnicornSceneOptions): 
 
   const create = async () => {
     const current = ++run;
-    const { projectId, jsonFilePath, sdkUrl, variables, preset, lazyLoad = true, production = true } = options;
+    const { projectId, jsonFilePath, sdkUrl, variables, preset, lazyLoad = true, production = false } = options;
     applied = { paused: false, preset, variables: JSON.stringify(variables) };
     try {
       if (!projectId && !jsonFilePath) throw new Error('UnicornScene needs a projectId or a jsonFilePath.');

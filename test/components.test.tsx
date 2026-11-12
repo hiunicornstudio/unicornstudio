@@ -70,7 +70,7 @@ test('Vue: emits load, exposes the scene, syncs in-place variable changes, destr
 
   expect(sdk.live()).toHaveLength(1);
   // Absent Boolean props must not reach the SDK as false.
-  expect(sdk.live()[0].options).toMatchObject({ lazyLoad: true, production: true });
+  expect(sdk.live()[0].options).toMatchObject({ lazyLoad: true, production: false });
   expect(onLoad).toHaveBeenCalledWith(sdk.live()[0]);
   expect(component.value!.scene).toBe(sdk.live()[0]);
   expect(host.textContent).toBe('');

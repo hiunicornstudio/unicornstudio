@@ -51,7 +51,7 @@ test('creates the scene on the element with the default options', async () => {
     element: target,
     projectId: 'a',
     lazyLoad: true,
-    production: true,
+    production: false,
     initialVariables: { speed: 1 },
     initialPreset: 'Dark',
   });

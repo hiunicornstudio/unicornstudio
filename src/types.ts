@@ -112,7 +112,10 @@ export interface UnicornSceneOptions {
   fps?: number;
   /** Waits to initialize until the scene scrolls into view. Defaults to `true`. */
   lazyLoad?: boolean;
-  /** Serves scene data from the edge CDN. Defaults to `true`. */
+  /**
+   * Serves scene data from the edge CDN, which only refreshes when the scene is published in
+   * production mode. Defaults to `false`, so a scene published without it never goes stale.
+   */
   production?: boolean;
   /** Treats the scene as a fixed-position element. Detected automatically when omitted. */
   fixed?: boolean;
