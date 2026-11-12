@@ -1,6 +1,6 @@
 {
   "name": "unicornstudio",
-  "version": "2.5.2",
+  "version": "2.5.3",
   "description": "Official Unicorn Studio components for React, Next.js, Vue and Svelte.",
   "keywords": [
     "unicornstudio",
@@ -23,7 +23,9 @@
   "license": "MIT",
   "author": "Unicorn Studio (https://www.unicorn.studio)",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./sdk/*.js"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -48,13 +50,15 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "sdk"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && cp -R src/svelte dist/svelte",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "version": "node scripts/sync-sdk-version.mjs && git add src/version.ts",
+    "sync-sdk": "node scripts/sync-sdk.mjs",
+    "version": "npm run sync-sdk && git add sdk",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "peerDependencies": {
@@ -75,6 +79,7 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/node": "^20.19.43",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "jsdom": "^26.0.0",

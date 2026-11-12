@@ -102,7 +102,7 @@ export interface UnicornSceneOptions {
   projectId?: string;
   /** URL of a self-hosted scene JSON export. Use this or `projectId`. */
   jsonFilePath?: string;
-  /** Loads the SDK from this URL instead of the pinned release on jsDelivr, for self-hosting. */
+  /** Loads the SDK from this URL instead of using the one bundled in this package. */
   sdkUrl?: string;
   /** Rendering scale, 0.25-1. Defaults to the scene's published setting. */
   scale?: number;
@@ -131,8 +131,9 @@ export interface UnicornSceneOptions {
   onVariableChange?: UnicornVariableChangeCallback;
 }
 
-/** The `window.UnicornStudio` global. */
+/** The SDK module, which is also the `window.UnicornStudio` global of a script embed. */
 export interface UnicornStudioSDK {
+  version: string;
   init(): Promise<UnicornStudioScene[]>;
   addScene(options: Record<string, unknown>): Promise<UnicornStudioScene>;
   destroy(): void;

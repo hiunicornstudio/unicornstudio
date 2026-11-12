@@ -6,15 +6,18 @@ import NextScene from '../src/next.js';
 import ReactScene from '../src/react.js';
 import VueScene from '../src/vue.js';
 import type { UnicornStudioScene } from '../src/index.js';
-import { installSdk, settle } from './sdk.js';
+import * as sdk from './sdk.js';
+
+vi.mock('../sdk/unicornStudio.js', () => import('./sdk.js'));
+
+const { settle } = sdk;
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
-let sdk: ReturnType<typeof installSdk>;
 let host: HTMLElement;
 
 beforeEach(() => {
-  sdk = installSdk();
+  sdk.scenes.length = 0;
   host = document.body.appendChild(document.createElement('div'));
 });
 afterEach(() => host.remove());

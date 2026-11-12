@@ -1,11 +1,9 @@
 import type { UnicornSceneOptions, UnicornStudioScene, UnicornStudioSDK } from './types.js';
-import { SDK_VERSION } from './version.js';
 
 export * from './types.js';
-export { SDK_VERSION };
 
-export const SDK_URL = `https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v${SDK_VERSION}/dist/unicornStudio.umd.js`;
-
+// One load per SDK per page: the bundled one, and each sdkUrl.
+let bundled: Promise<UnicornStudioSDK> | undefined;
 const loads = new Map<string, Promise<UnicornStudioSDK>>();
 
 // The HTML embed snippet leaves a `{ isInitialized }` stub on the global while its script loads.
@@ -15,10 +13,13 @@ const loadedSdk = () => {
 };
 
 /**
- * Loads the SDK once per page. A page runs one SDK: when one is already there, from an
- * embed snippet or an earlier call, it is reused and `url` is ignored.
+ * Resolves the SDK that ships in this package, which the app's bundler splits into its own
+ * chunk. Given a `url`, loads that script instead, reusing a `window.UnicornStudio` already
+ * on the page.
  */
-export function loadSdk(url = SDK_URL): Promise<UnicornStudioSDK> {
+export function loadSdk(url?: string): Promise<UnicornStudioSDK> {
+  if (!url) return (bundled ??= import('../sdk/unicornStudio.js') as unknown as Promise<UnicornStudioSDK>);
+
   const sdk = loadedSdk();
   if (sdk) return Promise.resolve(sdk);
 
@@ -118,6 +119,9 @@ export function mountScene(element: HTMLElement, options: UnicornSceneOptions): 
         ariaLabel: options.ariaLabel,
         initialVariables: variables,
         initialPreset: preset,
+        // The bundled SDK gets the bundled 3D model renderer, loaded only by scenes with a model.
+        // An SDK from sdkUrl keeps fetching the renderer released with it.
+        modelRenderer: sdkUrl ? undefined : () => import('../sdk/model-renderer.js'),
       });
       if (current !== run) return created.destroy();
       scene = created;

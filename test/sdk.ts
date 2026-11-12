@@ -19,17 +19,20 @@ function createScene(options: Record<string, any>) {
   return scene;
 }
 
-/** Puts a stand-in SDK on `window`, the way the real script does once it loads. */
-export function installSdk() {
-  const scenes: FakeScene[] = [];
-  (window as any).UnicornStudio = {
-    addScene: async (options: Record<string, any>) => {
-      if (options.projectId === 'missing') throw new Error('Error fetching data');
-      scenes.push(createScene(options));
-      return scenes.at(-1);
-    },
-  };
-  return { scenes, live: () => scenes.filter(scene => !scene.destroyed) };
-}
+/**
+ * Stands in for the SDK. Test files swap it in for the bundled one with
+ * `vi.mock('../sdk/unicornStudio.js', () => import('./sdk.js'))`.
+ */
+export const scenes: FakeScene[] = [];
+export const live = () => scenes.filter(scene => !scene.destroyed);
+export const addScene = vi.fn(async (options: Record<string, any>): Promise<any> => {
+  if (options.projectId === 'missing') throw new Error('Error fetching data');
+  scenes.push(createScene(options));
+  return scenes.at(-1);
+});
 
-export const settle = () => new Promise(resolve => setTimeout(resolve));
+/** Waits out the core's dynamic import of the SDK, then the scene it creates. */
+export const settle = async () => {
+  await vi.dynamicImportSettled();
+  await new Promise(resolve => setTimeout(resolve));
+};

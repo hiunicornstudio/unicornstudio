@@ -3,10 +3,13 @@ import { flushSync, mount, unmount } from 'svelte';
 import { expect, test, vi } from 'vitest';
 import SvelteScene, { unicornScene } from '../src/svelte/index.js';
 import { mountScene } from '../src/index.js';
-import { installSdk, settle } from './sdk.js';
+import * as sdk from './sdk.js';
+
+vi.mock('../sdk/unicornStudio.js', () => import('./sdk.js'));
+
+const { settle } = sdk;
 
 test('Svelte: loads the scene, syncs prop changes, destroys on unmount', async () => {
-  const sdk = installSdk();
   const onLoad = vi.fn();
   const props = $state({ projectId: 'a', width: 300, variables: { speed: 1 }, placeholder: '/still.png', onLoad });
   const component = mount(SvelteScene, { target: document.body, props });

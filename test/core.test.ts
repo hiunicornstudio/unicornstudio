@@ -1,52 +1,32 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, expect, test, vi } from 'vitest';
-import { mountScene, SDK_URL, SDK_VERSION } from '../src/index.js';
+import { mountScene } from '../src/index.js';
 import pkg from '../package.json';
-import { installSdk, settle } from './sdk.js';
+import { addScene, live, scenes, settle } from './sdk.js';
+
+vi.mock('../sdk/unicornStudio.js', () => import('./sdk.js'));
+vi.mock('../sdk/model-renderer.js', () => ({ bundledRenderer: true }));
 
 const element = () => document.body.appendChild(document.createElement('div'));
 
 afterEach(() => {
+  scenes.length = 0;
+  addScene.mockClear();
   delete (window as any).UnicornStudio;
   document.head.innerHTML = '';
 });
 
-test('the pinned SDK is the package version', () => {
-  expect(SDK_VERSION).toBe(pkg.version);
-  expect(SDK_URL).toContain(`unicornstudio.js@v${pkg.version}/`);
+test('the bundled SDK is the package version', () => {
+  const sdk = readFileSync('sdk/unicornStudio.js', 'utf8');
+  expect(sdk).toContain(`let version = "${pkg.version}";`);
 });
 
-test('scenes on one page share a single SDK script', async () => {
-  const onLoad = vi.fn();
-  mountScene(element(), { projectId: 'a', onLoad });
-  mountScene(element(), { projectId: 'b', onLoad });
-
-  const scripts = document.head.querySelectorAll('script');
-  expect([...scripts].map(script => script.src)).toEqual([SDK_URL]);
-
-  const { live } = installSdk();
-  scripts[0].onload!(new Event('load'));
-  await settle();
-  expect(live().map(scene => scene.options.projectId)).toEqual(['a', 'b']);
-  expect(onLoad).toHaveBeenCalledTimes(2);
-});
-
-test('a failed SDK load reports the error and can be retried', async () => {
-  const onError = vi.fn();
-  mountScene(element(), { projectId: 'a', sdkUrl: 'https://example.com/sdk.js', onError });
-  document.head.querySelector('script')!.onerror!(new Event('error'));
-  await settle();
-  expect(onError.mock.calls[0][0].message).toContain('https://example.com/sdk.js');
-
-  mountScene(element(), { projectId: 'a', sdkUrl: 'https://example.com/sdk.js' });
-  expect(document.head.querySelectorAll('script')).toHaveLength(2);
-});
-
-test('creates the scene on the element with the default options', async () => {
-  const { scenes } = installSdk();
+test('creates the scene with the bundled SDK, on the element, with the default options', async () => {
   const target = element();
   mountScene(target, { projectId: 'a', variables: { speed: 1 }, preset: 'Dark' });
   await settle();
 
+  expect(document.head.querySelector('script')).toBeNull();
   expect(scenes[0].options).toMatchObject({
     element: target,
     projectId: 'a',
@@ -57,10 +37,39 @@ test('creates the scene on the element with the default options', async () => {
   });
   // Left for the scene's published settings to decide.
   expect(scenes[0].options.scale).toBeUndefined();
+  expect(await scenes[0].options.modelRenderer()).toMatchObject({ bundledRenderer: true });
+});
+
+test('sdkUrl loads that script once per page instead, and leaves the model renderer to it', async () => {
+  const sdkUrl = 'https://example.com/sdk.js';
+  const onLoad = vi.fn();
+  mountScene(element(), { projectId: 'a', sdkUrl, onLoad });
+  mountScene(element(), { projectId: 'b', sdkUrl, onLoad });
+
+  const scripts = document.head.querySelectorAll('script');
+  expect([...scripts].map(script => script.src)).toEqual([sdkUrl]);
+
+  (window as any).UnicornStudio = { addScene };
+  scripts[0].onload!(new Event('load'));
+  await settle();
+  expect(live().map(scene => scene.options.projectId)).toEqual(['a', 'b']);
+  expect(live()[0].options.modelRenderer).toBeUndefined();
+  expect(onLoad).toHaveBeenCalledTimes(2);
+});
+
+test('a failed sdkUrl load reports the error and can be retried', async () => {
+  const sdkUrl = 'https://example.com/missing.js';
+  const onError = vi.fn();
+  mountScene(element(), { projectId: 'a', sdkUrl, onError });
+  document.head.querySelector('script')!.onerror!(new Event('error'));
+  await settle();
+  expect(onError.mock.calls[0][0].message).toContain(sdkUrl);
+
+  mountScene(element(), { projectId: 'a', sdkUrl });
+  expect(document.head.querySelectorAll('script')).toHaveLength(2);
 });
 
 test('reports a missing projectId and a failed scene through onError', async () => {
-  installSdk();
   const onError = vi.fn();
   mountScene(element(), { onError });
   mountScene(element(), { projectId: 'missing', onError });
@@ -72,7 +81,6 @@ test('reports a missing projectId and a failed scene through onError', async () 
 });
 
 test('syncs paused, variables and preset to the live scene without recreating it', async () => {
-  const { scenes } = installSdk();
   const handle = mountScene(element(), { projectId: 'a', variables: { speed: 1 } });
   await settle();
   const [scene] = scenes;
@@ -94,7 +102,6 @@ test('syncs paused, variables and preset to the live scene without recreating it
 });
 
 test('applies options that changed while the scene was loading', async () => {
-  const { scenes } = installSdk();
   const handle = mountScene(element(), { projectId: 'a', variables: { speed: 1 } });
   handle.update({ projectId: 'a', variables: { speed: 2 }, paused: true });
   await settle();
@@ -105,7 +112,7 @@ test('applies options that changed while the scene was loading', async () => {
 
 test('syncing a fallback scene, which has no variable methods, does not throw', async () => {
   const fallback = { fallbackOnly: true, destroy: vi.fn() };
-  (window as any).UnicornStudio = { addScene: async () => fallback };
+  addScene.mockResolvedValueOnce(fallback);
   const onLoad = vi.fn();
   const handle = mountScene(element(), { projectId: 'a', onLoad });
   await settle();
@@ -117,7 +124,6 @@ test('syncing a fallback scene, which has no variable methods, does not throw', 
 });
 
 test('recreates the scene when an init option changes', async () => {
-  const { scenes, live } = installSdk();
   const onLoad = vi.fn();
   const handle = mountScene(element(), { projectId: 'a', onLoad });
   await settle();
@@ -132,20 +138,16 @@ test('recreates the scene when an init option changes', async () => {
 });
 
 test('destroying before the scene finishes loading leaves nothing behind', async () => {
-  const { scenes, live } = installSdk();
   const onLoad = vi.fn();
   const handle = mountScene(element(), { projectId: 'a', onLoad });
-  await Promise.resolve();
   handle.destroy();
   await settle();
 
-  expect(scenes).toHaveLength(1);
   expect(live()).toEqual([]);
   expect(onLoad).not.toHaveBeenCalled();
 });
 
 test('forwards variable changes to the latest callback', async () => {
-  const { scenes } = installSdk();
   const first = vi.fn();
   const latest = vi.fn();
   const handle = mountScene(element(), { projectId: 'a', onVariableChange: first });

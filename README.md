@@ -6,7 +6,7 @@ The official [Unicorn Studio](https://www.unicorn.studio) components for React, 
 npm install unicornstudio
 ```
 
-The package version is the [SDK](https://github.com/hiunicornstudio/unicornstudio.js) version it loads: `unicornstudio@2.5.2` runs SDK v2.5.2.
+The [SDK](https://github.com/hiunicornstudio/unicornstudio.js) ships inside the package, so nothing loads from a third-party CDN, and the package version is the SDK version: `unicornstudio@2.5.3` runs SDK v2.5.3. Your bundler splits the SDK into its own chunk, loaded when the first scene mounts. The 3D model renderer is a second chunk, loaded only by scenes that have a model.
 
 ## React
 
@@ -89,11 +89,11 @@ Every component takes these, and they are the options object for `mountScene`.
 | `paused`       | `boolean` | `false`       | Pauses the scene.                                                            |
 | `variables`    | `object`  |               | Values for the scene's published variables.                                  |
 | `preset`       | `string`  |               | Published preset ID or name. `variables` override it.                        |
-| `sdkUrl`       | `string`  | jsDelivr      | Loads the SDK from your own URL instead, for self-hosting or a strict CSP.   |
+| `sdkUrl`       | `string`  | bundled SDK   | Loads the SDK from this URL instead of the bundled one.                      |
 
 `paused`, `variables` and `preset` sync to the live scene when they change. Changing any other option recreates the scene.
 
-A page runs one SDK. If one is already loaded, from an HTML embed snippet for example, the components use it and `sdkUrl` has no effect.
+With `sdkUrl`, a scene uses the `window.UnicornStudio` already on the page if there is one, and fetches the model renderer from the URL published with the scene.
 
 The components also take `width` and `height` (a number is pixels, default `100%`) and a `placeholder` that shows until the scene loads and when it fails to.
 
@@ -130,7 +130,7 @@ The SDK resizes scenes with the window. After a layout change that doesn't resiz
 
 Change the import: `unicornstudio-react` becomes `unicornstudio/react`, and `unicornstudio-react/next` becomes `unicornstudio/next`. The props are the same, with these differences:
 
-- The SDK loads from jsDelivr instead of being bundled into your app. Pass `sdkUrl` to self-host it.
+- The SDK is still bundled, now as a lazy chunk instead of in your main bundle.
 - `scale`, `dpi` and `fps` default to the scene's published settings instead of `1`, `1.5` and `60`.
 - A failed scene calls `onError` and shows the placeholder. No error message is rendered into the page.
 - `production` defaults to `false`, as it does in the SDK. Pass `production` for scenes you publish in production mode.

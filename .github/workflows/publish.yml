@@ -1,6 +1,7 @@
 name: Publish
 
 # `npm version <sdk version> && git push --follow-tags` pushes the tag that runs this.
+# The SDK is committed in sdk/, so the build needs nothing from the app repo.
 on:
   push:
     tags: ['v*']
