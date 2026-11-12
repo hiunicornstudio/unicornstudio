@@ -3936,7 +3936,7 @@ const DEFAULT_STATE_MOUSE = {
 };
 const ANIMATABLE_LIGHT_COLOR_PROPS = ["lightColor", "ambientLightColor", "fillLightColor"];
 const TEXT_LAYOUT_PROPS = ["left", "top", "width", "height", "fontSize", "lineHeight", "letterSpacing", "rotation"];
-let version = "2.5.3";
+let version = "2.6.0";
 function getNativeScrollTop() {
   return window.scrollY || window.pageYOffset || 0;
 }
@@ -4133,7 +4133,7 @@ function isAnimated(item) {
     return hasTimeUniforms || hasVideoSublayers || hasAnimatingSublayers;
   }
   const isAnimatedEffect = (item.layerType === "effect" || item.isModel || ((_d = (_c = item.data) == null ? void 0 : _c.uniforms) == null ? void 0 : _d.time)) && (item.animating || item.usesPingPong);
-  const isVideo = item.type === "video";
+  const isVideo = item.type === "video" || item.isVideo;
   const hasVideoTextures = Array.isArray((_e = item.data) == null ? void 0 : _e.textures) && item.data.textures.some((texture) => (texture == null ? void 0 : texture.type) === "video" && (texture == null ? void 0 : texture.src));
   return isAnimatedEffect || isVideo || hasVideoTextures;
 }
@@ -5011,7 +5011,7 @@ class Layer {
     (_d = state == null ? void 0 : state.requestLayerRender) == null ? void 0 : _d.call(state, this);
   }
   setSource(source, options = {}) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const src = source && typeof source === "object" ? source.src : source;
     if (!src) return this;
     this.setRuntimeOverride("src", src);
@@ -5019,8 +5019,17 @@ class Layer {
     if (!state) return this;
     this.local.sourceTexture = null;
     this.local.sourceTextureLoading = false;
-    if (this.layerType === "image") {
+    if (this.isVideo) {
       const plane = (_a = this.getPlane) == null ? void 0 : _a.call(this);
+      if (plane) {
+        plane.videos.forEach((video) => video.pause());
+        plane.videos = [];
+        plane.textures = plane.textures.filter((texture) => texture._samplerName !== "uSourceImage");
+        this.thumb = source.thumb || "";
+        state.ensureImageLayerTexture(this, plane);
+      }
+    } else if (this.layerType === "image") {
+      const plane = (_b = this.getPlane) == null ? void 0 : _b.call(this);
       state.preloadImage(src, "uSourceImage", (texture) => {
         var _a2, _b2, _c2;
         if (!texture) return;
@@ -5037,11 +5046,11 @@ class Layer {
         state.requestSceneRender();
       });
     } else if (this.type === "video") {
-      const plane = (_b = this.getPlane) == null ? void 0 : _b.call(this);
+      const plane = (_c = this.getPlane) == null ? void 0 : _c.call(this);
       if (plane) {
         plane.videos = [];
         plane.textures = plane.textures.filter((texture) => texture.sourceType !== "video");
-        const videoSrc = ((_c = src.includes) == null ? void 0 : _c.call(src, ", ")) ? getBestVideoSource(src) : src;
+        const videoSrc = ((_d = src.includes) == null ? void 0 : _d.call(src, ", ")) ? getBestVideoSource(src) : src;
         plane.loadVideo(videoSrc, { sampler: "uVideoTexture", premultipliedAlpha: false }, () => state.requestSceneRender());
       }
     }
@@ -7057,8 +7066,9 @@ class Scene {
   }
   // Videos upload as black until the browser presents a frame, and autoplay can be denied outright
   // (iOS Low Power Mode, background tabs). Both cases look the same to a shader, so keep the video
-  // sampler empty until the first frame lands and let shaders sample their thumbnail until then.
-  playVideoTexture(plane, videoTexture, video) {
+  // sampler empty until the first frame lands and let shaders sample their thumbnail until then. A
+  // video on an image layer has no second sampler for its thumbnail, so `poster` holds this one.
+  playVideoTexture(plane, videoTexture, video, poster) {
     var _a;
     const sampler = videoTexture == null ? void 0 : videoTexture._samplerName;
     if (!plane || !sampler || !video) return;
@@ -7072,7 +7082,7 @@ class Scene {
       syncTextureUnits(plane);
       this.requestSceneRender();
     };
-    setVideoSampler(null);
+    setVideoSampler(poster);
     const showVideo = () => setVideoSampler(videoTexture);
     if (typeof video.requestVideoFrameCallback === "function") {
       video.requestVideoFrameCallback(showVideo);
@@ -7087,6 +7097,41 @@ class Scene {
   }
   ensureImageLayerTexture(item, plane = null) {
     if (item.layerType !== "image" || !item.src || item.local.sourceTexture || item.local.sourceTextureLoading) {
+      return;
+    }
+    if (item.isVideo) {
+      const video = this.preloadVideo(item.src);
+      if (!plane) {
+        this.preloadImage(item.thumb, "uSourceImage");
+        return;
+      }
+      item.local.sourceTextureLoading = true;
+      const start = (poster) => {
+        item.local.imageReady = true;
+        if (poster) {
+          plane.addTexture(poster);
+        } else {
+          createTex(plane, "uSourceImage");
+        }
+        this.requestSceneRender();
+        const play = () => plane.loadVideo(video, { sampler: "uSourceImage" }, (texture) => {
+          item.local.sourceTextureLoading = false;
+          item.local.sourceTexture = texture;
+          video.loop = item.loop ?? true;
+          video.playbackRate = item.playbackRate || 1;
+          this.playVideoTexture(plane, texture, video, poster);
+        });
+        if (video.readyState >= video.HAVE_CURRENT_DATA) {
+          play();
+        } else {
+          video.addEventListener("loadeddata", play, { once: true });
+        }
+      };
+      if (item.thumb) {
+        this.preloadImage(item.thumb, "uSourceImage", start);
+      } else {
+        start(null);
+      }
       return;
     }
     item.local.sourceTextureLoading = true;
@@ -8156,7 +8201,7 @@ class Scene {
         const prevInputs = item.local.previousFrameInputTargets || {};
         const src = prevMode === "target" ? prevInputs[passIndex] : plane.target;
         const dst = prevTargets[passIndex];
-        if (src && dst) this.blitRenderTarget(src, dst);
+        if (dst && (src || prevMode !== "target")) this.blitRenderTarget(src, dst);
       }
     });
   }
@@ -9025,16 +9070,17 @@ void main() {
       this.curtain.renderer.bindFrameBuffer(null);
     }
   }
+  // Without a sourceTarget the copy reads the canvas.
   blitRenderTarget(sourceTarget, destTarget) {
     var _a, _b, _c;
     const gl = (_a = this.curtain) == null ? void 0 : _a.gl;
     if (!gl || typeof gl.blitFramebuffer !== "function") return;
-    const w = ((_b = sourceTarget._size) == null ? void 0 : _b.width) || this.curtain.canvas.width;
-    const h = ((_c = sourceTarget._size) == null ? void 0 : _c.height) || this.curtain.canvas.height;
+    const w = ((_b = sourceTarget == null ? void 0 : sourceTarget._size) == null ? void 0 : _b.width) || this.curtain.canvas.width;
+    const h = ((_c = sourceTarget == null ? void 0 : sourceTarget._size) == null ? void 0 : _c.height) || this.curtain.canvas.height;
     this.ensureRenderTargetInitialized(sourceTarget, w, h);
     this.ensureRenderTargetInitialized(destTarget, w, h);
-    if (!(sourceTarget == null ? void 0 : sourceTarget._frameBuffer) || !(destTarget == null ? void 0 : destTarget._frameBuffer)) return;
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, sourceTarget._frameBuffer);
+    if (sourceTarget && !sourceTarget._frameBuffer || !(destTarget == null ? void 0 : destTarget._frameBuffer)) return;
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, (sourceTarget == null ? void 0 : sourceTarget._frameBuffer) || null);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, destTarget._frameBuffer);
     gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
