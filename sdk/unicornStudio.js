@@ -2144,7 +2144,7 @@ const TEXT_LAYOUT_PEN_SCALE = 3;
 const FONT_ATLAS_SAMPLER = "uFontAtlas";
 const FONT_METRICS_SAMPLER = "uFontMetrics";
 const TEXT_LAYOUT_SAMPLER = "uTextLayout";
-const TEXT_CODES_MAX = 64;
+const TEXT_CODES_MAX = 256;
 const TEXT_REVEAL_LOOK_PROPS = [
   "revealOrder",
   "revealMotion",
@@ -3936,7 +3936,7 @@ const DEFAULT_STATE_MOUSE = {
 };
 const ANIMATABLE_LIGHT_COLOR_PROPS = ["lightColor", "ambientLightColor", "fillLightColor"];
 const TEXT_LAYOUT_PROPS = ["left", "top", "width", "height", "fontSize", "lineHeight", "letterSpacing", "rotation"];
-let version = "2.6.0";
+let version = "2.6.1";
 function getNativeScrollTop() {
   return window.scrollY || window.pageYOffset || 0;
 }
@@ -4138,14 +4138,15 @@ function isAnimated(item) {
   return isAnimatedEffect || isVideo || hasVideoTextures;
 }
 function isDynamic(item) {
-  var _a;
+  var _a, _b;
   if (item.local.isDynamicCache !== void 0) {
     return item.local.isDynamicCache;
   }
   const hasStateEvents = item.states && (item.states.appear.some((effect) => !effect.complete) || [...item.states.scroll, ...item.states.hover, ...item.states.mousemove].length > 0);
   const trackingProps = ["trackMouse", "axisTilt", "trackMouseMove", "rotationTracking", "lightTracking"];
   const isTrackingMouse = item.isFlattened ? !!((_a = item.data) == null ? void 0 : _a.hasMouseTracking) : trackingProps.some((prop) => item.hasOwnProperty(prop) && item[prop] !== 0);
-  const result = hasStateEvents || isTrackingMouse || isAnimated(item);
+  const readsClick = (_b = item.compiledFragmentShaders) == null ? void 0 : _b.some((shader) => /\bu(Click|DragOffset)\b/.test(shader));
+  const result = hasStateEvents || isTrackingMouse || readsClick || isAnimated(item);
   item.local.isDynamicCache = result;
   return result;
 }
@@ -6681,9 +6682,32 @@ function handleMouseMove(e) {
     const yPos = pageY - (rect.top + (scene.isFixed ? 0 : scene.scrollY));
     scene.mouse.page.x = pageX;
     scene.mouse.page.y = pageY;
+    if (scene.mouse.dragging) {
+      scene.mouse.drag.x += (xPos * 0.5 - scene.mouse.movePos.x) / (rect.width / 2);
+      scene.mouse.drag.y -= (yPos * 0.5 - scene.mouse.movePos.y) / (rect.height / 2);
+    }
     scene.mouse.movePos.x = xPos * 0.5;
     scene.mouse.movePos.y = yPos * 0.5;
     scene.mouse.movedInView = true;
+  }
+}
+function handlePointerDown(e) {
+  var _a, _b;
+  handleMouseMove(e);
+  updateMouseMove();
+  for (let si = 0; si < scenes.length; si++) {
+    const scene = scenes[si];
+    if (!scene.isInView || ((_b = (_a = scene.interactivity) == null ? void 0 : _a.mouse) == null ? void 0 : _b.disabled) || !scene.getMouse().inBounds) continue;
+    scene.mouse.dragging = true;
+    scene.local.needsFrame = true;
+  }
+}
+function handlePointerUp() {
+  for (let si = 0; si < scenes.length; si++) {
+    const scene = scenes[si];
+    if (!scene.mouse.dragging) continue;
+    scene.mouse.dragging = false;
+    scene.local.needsFrame = true;
   }
 }
 let scenes = [];
@@ -6743,6 +6767,7 @@ class Scene {
       delta: { x: 0, y: 0 },
       page: { x: 99999999999, y: 99999999999 },
       dragging: false,
+      drag: { x: 0, y: 0 },
       movedInView: false,
       enterTime: null,
       ticks: 0,
@@ -8004,6 +8029,16 @@ class Scene {
         name: "uTime",
         type: "1f",
         value: 0
+      },
+      click: {
+        name: "uClick",
+        type: "1f",
+        value: 0
+      },
+      dragOffset: {
+        name: "uDragOffset",
+        type: "2f",
+        value: new Vec2(0)
       }
     };
     if (item.usesPingPong) {
@@ -9569,6 +9604,9 @@ void main() {
       plane.videos.at(-1).playbackRate = item.local.stateEffectProps.playbackRate;
     }
     if (isMobile() && ((_d = (_c = this.interactivity) == null ? void 0 : _c.mouse) == null ? void 0 : _d.disableMobile)) return false;
+    plane.uniforms.click.value = this.mouse.dragging ? 1 : 0;
+    plane.uniforms.dragOffset.value.x = this.mouse.drag.x;
+    plane.uniforms.dragOffset.value.y = this.mouse.drag.y;
     if (!this.mouse.movedInView) return;
     if (!item.local.currentFrameMouseValues) {
       item.local.currentFrameMouseValues = this.calculateItemMouseValues(item);
@@ -9720,6 +9758,9 @@ function bindEvents() {
   } else {
     ael(window, "mousemove", handleMouseMove);
   }
+  ael(window, "pointerdown", handlePointerDown);
+  ael(window, "pointerup", handlePointerUp);
+  ael(window, "pointercancel", handlePointerUp);
   ael(window, "routeChange", cleanupScenes);
   ael(document, "mouseleave", handleMouseLeave);
   debouncedHandleWindowResize = debounce(handleWindowResize, 16);
@@ -9734,6 +9775,9 @@ function bindEvents() {
 function unbindEvents() {
   rel(window, "mousemove", handleMouseMove);
   rel(window, "touchmove", handleMouseMove);
+  rel(window, "pointerdown", handlePointerDown);
+  rel(window, "pointerup", handlePointerUp);
+  rel(window, "pointercancel", handlePointerUp);
   rel(window, "scroll", handleWindowScroll);
   rel(window, "routeChange", cleanupScenes);
   rel(document, "mouseleave", handleMouseLeave);
